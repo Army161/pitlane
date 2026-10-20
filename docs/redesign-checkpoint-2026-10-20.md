@@ -18,7 +18,7 @@ No changes to inspection logic, providers, evidence, receipts, quotas, prices, b
 | Check | Result |
 |---|---|
 | `pnpm typecheck` | pass |
-| `pnpm test` | 235 / 236 pass. The one failure, `service-process` "recovers a killed owned worker", fails identically on untouched `4f04a6ee` in this environment (the job completes before the kill; timing). |
+| `pnpm test` | 237 / 237 pass (52 files). The killed-worker test now uses SIGKILL; on Linux, SIGTERM triggered a graceful drain, so the job finished before the "crash". |
 | `pnpm build` (`PITLANE_BUILD_SHA` set) | pass |
 | `pnpm test:e2e` (production build) | 6 / 6 pass (original 5 plus a new landing/onboarding/career journey) |
 
@@ -28,4 +28,6 @@ The Vercel project serves the web UI as a labelled frontend preview (`PITLANE_FR
 ## Not done
 - No peer-confirmation workflow: the leaderboard ranks only free lessons completed, by design.
 - No email invitations (membership still uses registered account IDs).
-- The redesign was not tested with a screen reader or measured for contrast with a tool. Keyboard and reduced-motion paths were checked in the browser tests.
+- The redesign was not tested with a screen reader. Automated axe checks (WCAG 2.2 AA, 38 screen states) report 0 violations; keyboard and reduced-motion paths are checked in the browser tests.
+
+Current launch status and blockers: `docs/launch-readiness-2026-10-20.md`.

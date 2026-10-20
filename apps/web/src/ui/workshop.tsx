@@ -80,7 +80,7 @@ export default function Workshop({section,receiptId}:{section:string;receiptId?:
  const props:ScreenProps|undefined=project?{account,project,call,act,busy,notify:setNotice}:undefined;
  const tenant=account.tenants.find(t=>t.id===account.tenant_id);
  return <div className="shell"><a className="skip" href="#main">Skip to content</a>
-  <aside className="sidebar">
+  <aside className="sidebar" aria-label="Workshop sidebar">
    <div className="sidebar-head"><Brand href="/garage"/><span className="brand-tag">Inspect · Verify · Understand</span></div>
    <nav aria-label="Workshop">{areas.map(([path,label,plain,icon])=><Link key={path} href={'/'+path} aria-current={section===path?'page':undefined}><Icon name={icon}/><span>{label}<small>{plain}</small></span></Link>)}</nav>
    <div className="foot"><p className="sidebar-slogan">Same standards.<br/><em>Every lap.</em></p><CosmeticPreference compact/><div className="divider"/><MotionPreference/><div className="divider"/>Inspections have no transaction tools. Cosmetics never change results, access or billing.</div>

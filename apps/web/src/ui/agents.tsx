@@ -23,7 +23,7 @@ export function Agents({project,call,act,busy,notify}:ScreenProps){
   notify(result.reply?'Agent explanation saved with usage.':`Your message is saved. Agent status: ${result.request.status.replaceAll('_',' ')}.`);
  });
  return <><PageHead title="Agent workspace" description="Private conversations about your integration evidence. Agent explanations are separate from deterministic findings."/>
- <div className="agent-layout"><aside className="panel conversation-list"><p className="eyebrow">Project conversations</p><Load {...conversations}/>
+ <div className="agent-layout"><aside className="panel conversation-list" aria-label="Project conversations"><p className="eyebrow">Project conversations</p><Load {...conversations}/>
  {conversations.value.length?<ul className="list">{conversations.value.map(c=><li key={c.id}><button className={'conversation-button '+(current?.id===c.id?'selected':'')} aria-pressed={current?.id===c.id} onClick={()=>{setSelected(c.id);pending.current=null;setContent('');}}>{text(c.title)}<small>{date(c.updatedAt)}</small></button></li>)}</ul>:!conversations.loading&&<p className="muted">No conversations yet.</p>}
  {conversations.hasMore&&<button className="secondary" disabled={conversations.loading} onClick={()=>void conversations.more()}>Load older conversations</button>}
  {project.can_write&&<form className="form" onSubmit={e=>{e.preventDefault();void act(async()=>{const created=await call<Conversation>(root+'/conversations',{title});setSelected(created.id);setTitle('');conversations.refresh();});}}><label>Conversation title<input required maxLength={128} value={title} onChange={e=>setTitle(e.target.value)}/></label><button disabled={busy}>New conversation</button></form>}</aside>

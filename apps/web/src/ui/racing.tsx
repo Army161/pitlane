@@ -37,7 +37,7 @@ export function Landing(){
       <li><Icon name="clock"/><span>Built for builders,<br/>not hype.</span></li>
      </ul>
     </div>
-    <aside className="sample-card" aria-label="Example report summary (sample data)">
+    <div className="sample-card" role="group" aria-label="Example report summary (sample data)">
      <header><span className="ok"><Icon name="check" size={16}/></span><h2>Inspection complete</h2><span className="tag">Sample</span></header>
      <p className="mono">Example mint · devnet</p>
      <ul>
@@ -46,7 +46,7 @@ export function Landing(){
       <li><span className="dot unknown"><Icon name="question" size={13}/></span>Metadata: not enough evidence</li>
      </ul>
      <a className="link-arrow" href="#example">How to read this <Icon name="arrow" size={16}/></a>
-    </aside>
+    </div>
    </section>
    <div className="landing-body">
     <div className="steps-row" id="how-it-works">

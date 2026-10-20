@@ -40,7 +40,7 @@ it('rejects an actual hosted process with a build different from its packaged id
 });
 it('recovers a killed owned worker from durable state without duplicating delivery or quota settlement',async()=>{
  const j=await job('packaged-worker-kill-key');const first=await worker(1000);await until(async()=>(await db.query('select calls from pitlane.jobs where id=$1',[j.id])).rows[0].calls>=1);
- const exited=once(first.child,'exit');first.child.kill();await exited;children.delete(first.child);
+ const exited=once(first.child,'exit');first.child.kill('SIGKILL');await exited;children.delete(first.child);
  await db.query("update pitlane.jobs set lease_until=clock_timestamp()-interval '1 second' where id=$1",[j.id]);const second=await worker();
  await until(async()=>(await db.query('select state from pitlane.jobs where id=$1',[j.id])).rows[0].state==='completed');await second.drain();
  expect((await db.query('select attempts,lease_epoch from pitlane.jobs where id=$1',[j.id])).rows[0]).toMatchObject({attempts:2,lease_epoch:'2'});expect((await db.query('select count(*)::int as n from pitlane.receipt_versions where job_id=$1',[j.id])).rows[0].n).toBe(1);expect((await db.query('select consumed,reserved from pitlane.entitlement_lots where tenant_id=$1',[T])).rows[0]).toMatchObject({consumed:1,reserved:0});
