@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PITLANE immutable subscription catalog",
+  "description": "PITLANE_BILLING_CATALOG: explicitly configured account-owned Stripe prices. Default [] sells no subscriptions. Every price and plan version is immutable once persisted.",
+  "type": "array",
+  "maxItems": 32,
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["planId", "version", "label", "priceId", "amountCents", "units", "currency", "interval"],
+    "properties": {
+      "planId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"},
+      "version": {"type": "string", "pattern": "^[a-zA-Z0-9_.-]{1,64}$"},
+      "label": {"type": "string", "minLength": 1, "maxLength": 80},
+      "priceId": {"type": "string", "pattern": "^price_[a-zA-Z0-9_]{1,128}$"},
+      "amountCents": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 10, "description": "Positive integer cents, maximum 1000000000 enforced at runtime."},
+      "units": {"type": "integer", "minimum": 1, "maximum": 10000},
+      "currency": {"const": "usd"},
+      "interval": {"const": "month"}
+    }
+  }
+}

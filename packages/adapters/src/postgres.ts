@@ -1,0 +1,8 @@
+import pg from 'pg';import type {Db,Tx,Actor} from '../../contracts/src';
+export class PostgresDb implements Db {
+ readonly pool:pg.Pool;
+ constructor(url:string,readonly role:'pitlane_web'|'pitlane_worker'|'pitlane_billing'|'pitlane_gateway'|'pitlane_auth'|'pitlane_artifact'|'pitlane_maintenance'|'migrator'='pitlane_web'){const u=new URL(url);const keys=[...u.searchParams.keys()];if(!['postgres:','postgresql:'].includes(u.protocol)||new Set(keys).size!==keys.length||u.searchParams.has('host')||!['127.0.0.1','localhost','[::1]'].includes(u.hostname)&&u.searchParams.get('sslmode')!=='verify-full')throw new Error('Verified TLS required for remote database');this.pool=new pg.Pool({connectionString:url,max:10,connectionTimeoutMillis:8000,idleTimeoutMillis:30000});this.pool.on('error',()=>process.stderr.write('Idle database connection lost.\n'))}
+ async transaction<T>(fn:(tx:Tx)=>Promise<T>,actor?:Actor):Promise<T>{const c=await this.pool.connect();try{await c.query('BEGIN');if(this.role!=='migrator')await c.query(`SET LOCAL ROLE ${this.role}`);if(actor)await c.query("select set_config('pitlane.actor_id',$1,true),set_config('pitlane.tenant_id',$2,true)",[actor.userId,actor.tenantId]);const tx:Tx={query:async<T>(sql:string,values?:unknown[])=>{const r=await c.query(sql,values);return {rows:r.rows as T[],rowCount:r.rowCount}}};const result=await fn(tx);await c.query('COMMIT');return result}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}}
+ query<T=Record<string,unknown>>(sql:string,values?:unknown[]){return this.transaction(tx=>tx.query<T>(sql,values))}
+ async close(){await this.pool.end()}
+}

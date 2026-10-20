@@ -1,0 +1,7 @@
+import {parseRuntimeConfig,type RuntimeConfig} from '../../contracts/src';
+export function loadConfig(env:Record<string,string|undefined>):RuntimeConfig{
+ if(env.NODE_ENV==='production'&&!env.PITLANE_MODE)throw new Error('EXPLICIT_MODE_REQUIRED');
+ const mode=env.PITLANE_MODE??'local';const parsed=parseRuntimeConfig({mode,authMode:env.PITLANE_AUTH_MODE??(mode==='local'?'fixture':'supabase'),storageMode:env.PITLANE_STORAGE_MODE??(mode==='local'?'local':'supabase'),rpcMode:env.PITLANE_RPC_MODE??(mode==='local'?'fixture':'gateway'),billingMode:env.PITLANE_BILLING_MODE??'disabled',environmentId:env.PITLANE_ENVIRONMENT_ID??(mode==='local'?'local-fixture':''),expectedProjectId:env.PITLANE_EXPECTED_PROJECT_ID,egressVerified:env.PITLANE_EGRESS_VERIFIED==='true'});if(!parsed.ok)throw new Error(parsed.code);if(parsed.value.mode==='production'&&!/^[0-9a-f]{64}$/.test(env.PITLANE_EGRESS_ATTESTATION_SHA256??''))throw new Error('EGRESS_ATTESTATION_REQUIRED');return parsed.value;
+}
+export function databaseUrl(env:Record<string,string|undefined>,role='WEB') {const configured=env[`PITLANE_${role}_DATABASE_URL`];if(configured)return configured;if((env.PITLANE_MODE??'local')!=='local')throw new Error(`PITLANE_${role}_DATABASE_URL_REQUIRED`);return `postgres://pitlane_local:local-test-only@127.0.0.1:${env.PITLANE_LOCAL_DB_PORT??55432}/postgres`}
+export function required(env:Record<string,string|undefined>,name:string){const value=env[name];if(!value)throw new Error(`${name}_REQUIRED`);return value}

@@ -1,0 +1,55 @@
+{
+  "name": "pitlane",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.11.1 <25"
+  },
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "node --import tsx scripts/build.ts",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "playwright test",
+    "dev": "node --import tsx scripts/dev.ts",
+    "start": "node apps/web/.next/standalone/apps/web/server.js",
+    "dev:web": "next dev apps/web --hostname 127.0.0.1 --port 3000",
+    "dev:worker": "tsx apps/worker/src/main.ts",
+    "dev:db": "tsx scripts/local-db.ts",
+    "billing": "node .dist/billing.mjs",
+    "migrate": "node .dist/migrate.mjs",
+    "build:services": "node --import tsx scripts/build-services.ts",
+    "build:web": "next build apps/web",
+    "verify:standalone": "node --import tsx scripts/verify-standalone.ts",
+    "start:worker": "node .dist/worker.mjs",
+    "start:gateway": "node .dist/gateway.mjs",
+    "start:artifact": "node .dist/artifact.mjs",
+    "start:maintenance": "node .dist/maintenance.mjs",
+    "dev:migrate": "node --import tsx scripts/migrate.ts"
+  },
+  "dependencies": {
+    "@solana/spl-token": "0.4.15",
+    "@supabase/supabase-js": "2.117.2",
+    "bs58": "6.0.0",
+    "next": "16.3.8",
+    "pg": "8.23.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "stripe": "23.0.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.6.4",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "embedded-postgres": "18.4.0-beta.17",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}

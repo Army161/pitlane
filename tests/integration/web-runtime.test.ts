@@ -1,0 +1,24 @@
+import {beforeAll,afterAll,beforeEach,it,expect} from 'vitest';import type pg from 'pg';import {database,seed,T,P,U,T2} from './support';const m=await import('../../apps/web/src/lib/runtime').catch(()=>({}));let db:pg.Pool,runtime:any;
+beforeAll(async()=>{db=await database()});beforeEach(async()=>{await seed(db);runtime=new (m as any).WebRuntime({PITLANE_MODE:'local',PITLANE_WEB_DATABASE_URL:process.env.PITLANE_TEST_DATABASE_URL,PITLANE_AUTH_DATABASE_URL:process.env.PITLANE_TEST_DATABASE_URL,PITLANE_LOCAL_STORAGE_DIR:'.data/web-runtime-artifacts',PITLANE_ORIGIN:'http://127.0.0.1:3000'})});afterAll(async()=>{await runtime?.close();await db.end()});
+it('web health rejects an incompatible schema before accepting authentication traffic',async()=>{
+ const original=(await db.query("select pg_get_functiondef('pitlane.runtime_info()'::regprocedure) as definition")).rows[0].definition;
+ try{
+  await db.query("create or replace function pitlane.runtime_info() returns jsonb language sql stable security definer set search_path=pitlane,pg_temp as $$select jsonb_build_object('mode',mode,'environment_id',environment_id,'billing_mode',billing_mode,'auth_project_id',auth_project_id,'contract','1','schema_version','000') from pitlane.runtime where id$$");
+  const health=await runtime.handle(new Request('http://127.0.0.1:3000/health'));
+  expect(health.status).toBe(503);
+  expect((await health.json()).code).toBe('SERVICE_UNAVAILABLE');
+ }finally{try{await runtime.close();runtime=null;}finally{await db.query(original);}}
+});
+it('query-selected workspace for streamed downloads requires current membership and agrees with any header',async()=>{
+ await db.query("insert into pitlane.tenant_memberships values($1,$2,'member',true)",[T2,U]);
+ const state=await runtime.handle(new Request('http://127.0.0.1:3000/v1/auth/state'));const nonce=(await state.json()).nonce;
+ const login=await runtime.handle(new Request('http://127.0.0.1:3000/v1/auth/fixture',{method:'POST',headers:{'content-type':'application/json',cookie:state.headers.get('set-cookie').split(';')[0],origin:'http://127.0.0.1:3000'},body:JSON.stringify({fixture:'first',nonce})}));
+ const cookie=login.headers.get('set-cookie').split(';')[0];
+ const me=await runtime.handle(new Request('http://127.0.0.1:3000/v1/me?tenant_id='+T2,{headers:{cookie}}));expect((await me.json()).tenant_id).toBe(T2);
+ expect((await runtime.handle(new Request('http://127.0.0.1:3000/v1/me?tenant_id=10000000-0000-4000-8000-000000000099',{headers:{cookie}}))).status).toBe(404);
+ expect((await runtime.handle(new Request('http://127.0.0.1:3000/v1/me?tenant_id='+T2,{headers:{cookie,'x-tenant-id':T}}))).status).toBe(404);
+ await db.query('update pitlane.tenant_memberships set active=false where tenant_id=$1 and user_id=$2',[T2,U]);
+ expect((await runtime.handle(new Request('http://127.0.0.1:3000/v1/me?tenant_id='+T2,{headers:{cookie}}))).status).toBe(404);
+ await runtime.close();runtime=null;
+});
+it('fixture login requires same-origin nonce, returns opaque cookie and scopes the verified session',async()=>{const state=await runtime.handle(new Request('http://127.0.0.1:3000/v1/auth/state'));const nonce=(await state.json()).nonce;const nonceCookie=state.headers.get('set-cookie').split(';')[0];expect((await runtime.handle(new Request('http://127.0.0.1:3000/v1/auth/fixture',{method:'POST',headers:{'content-type':'application/json',cookie:nonceCookie,origin:'https://foreign.invalid'},body:JSON.stringify({fixture:'first',nonce})}))).status).toBe(403);const login=await runtime.handle(new Request('http://127.0.0.1:3000/v1/auth/fixture',{method:'POST',headers:{'content-type':'application/json',cookie:nonceCookie,origin:'http://127.0.0.1:3000'},body:JSON.stringify({fixture:'first',nonce})}));expect(login.status).toBe(200);const cookie=login.headers.get('set-cookie').split(';')[0];expect(cookie).not.toContain(U);expect(login.headers.get('set-cookie')).toContain('HttpOnly');const me=await runtime.handle(new Request('http://127.0.0.1:3000/v1/me',{headers:{cookie}}));expect(me.status).toBe(200);const account=await me.json();expect(account.user_id).toBe(U);expect(account.tenant_id).toBe(T);expect(account.origin).toBe('fixture');expect(account.access_token).toBeUndefined();const forgedScope=await runtime.handle(new Request('http://127.0.0.1:3000/v1/projects',{headers:{cookie,'x-tenant-id':'10000000-0000-4000-8000-000000000099'}}));expect(forgedScope.status).toBe(404);const logout=await runtime.handle(new Request('http://127.0.0.1:3000/v1/auth/logout',{method:'POST',headers:{cookie,origin:'http://127.0.0.1:3000','x-csrf-token':account.csrf}}));expect(logout.status).toBe(200);expect((await runtime.handle(new Request('http://127.0.0.1:3000/v1/me',{headers:{cookie}}))).status).toBe(401);await runtime.close();runtime=null});

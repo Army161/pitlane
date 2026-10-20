@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'tests/e2e',globalSetup:'./tests/e2e/setup.ts',timeout:45000,fullyParallel:false,workers:1,use:{baseURL:'http://127.0.0.1:3100',headless:true,trace:'retain-on-failure',launchOptions:{executablePath:process.env.PITLANE_CHROMIUM_PATH??'C:/Users/Armyg/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe'}}});

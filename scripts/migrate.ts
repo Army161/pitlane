@@ -1,0 +1,2 @@
+import {PostgresDb} from '../packages/adapters/src/postgres';import {applyMigrations} from './migrations';
+const url=process.env.PITLANE_MIGRATOR_DATABASE_URL;if(!url)throw new Error('PITLANE_MIGRATOR_DATABASE_URL_REQUIRED');const db=new PostgresDb(url,'migrator');try{await applyMigrations(db.pool);process.stdout.write('PITLANE migrations applied and checksums verified.\n')}finally{await db.close()}

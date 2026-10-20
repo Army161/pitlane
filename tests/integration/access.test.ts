@@ -1,0 +1,6 @@
+import {beforeAll,afterAll,beforeEach,it,expect} from 'vitest';import type pg from 'pg';import {database,seed,scoped,T,P,U,T2,P2,U2} from './support';
+let db:pg.Pool;beforeAll(async()=>{db=await database()});beforeEach(async()=>seed(db));afterAll(async()=>db.end());
+it('hides foreign tenants and prevents billing-only evidence access',async()=>{expect(await scoped(db,async c=>(await c.query('select id from pitlane.projects')).rows)).toEqual([{id:P}]);expect(await scoped(db,async c=>(await c.query('select id from pitlane.projects')).rows,T2,U2)).toEqual([])});
+it('rejects cross-tenant project membership foreign keys',async()=>{await expect(db.query("INSERT INTO pitlane.project_memberships VALUES($1,$2,$3,'developer',true)",[T2,P,U2])).rejects.toThrow()});
+it('runtime roles cannot write evidence, quota balances or job state directly',async()=>{await expect(scoped(db,c=>c.query('UPDATE pitlane.entitlement_lots SET consumed=0'))).rejects.toThrow('permission denied');await expect(scoped(db,c=>c.query("UPDATE pitlane.jobs SET state='completed'"))).rejects.toThrow('permission denied')});
+it('membership revocation immediately removes scoped reads',async()=>{await db.query('UPDATE pitlane.tenant_memberships SET active=false WHERE user_id=$1',[U]);expect(await scoped(db,async c=>(await c.query('select id from pitlane.projects')).rows)).toEqual([])});

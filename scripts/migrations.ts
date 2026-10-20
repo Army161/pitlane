@@ -1,0 +1,6 @@
+import {readdir,readFile} from 'node:fs/promises';import {createHash} from 'node:crypto';import pg from 'pg';
+export async function applyMigrations(pool:pg.Pool,root='db/migrations'){
+ const c=await pool.connect();try{await c.query("select pg_advisory_lock(hashtextextended('pitlane/schema-migrations',0))");await c.query('create schema if not exists pitlane');await c.query('create table if not exists pitlane.schema_migrations(name text primary key,sha256 text not null,applied_at timestamptz not null default now())');
+ for(const name of (await readdir(root)).filter(x=>/^\d+_.*\.sql$/.test(x)).sort()){const source=await readFile(`${root}/${name}`,'utf8');const hash=createHash('sha256').update(source).digest('hex');const existing=(await c.query('select sha256 from pitlane.schema_migrations where name=$1',[name])).rows[0];if(existing){if(existing.sha256!==hash)throw new Error(`MIGRATION_CHECKSUM_MISMATCH:${name}`);continue}await c.query('begin');try{await c.query(source);await c.query('insert into pitlane.schema_migrations(name,sha256) values($1,$2)',[name,hash]);await c.query('commit')}catch(e){await c.query('rollback');throw e}}
+ }finally{await c.query("select pg_advisory_unlock(hashtextextended('pitlane/schema-migrations',0))").catch(()=>{});c.release()}
+}

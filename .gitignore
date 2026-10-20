@@ -1,0 +1,11 @@
+node_modules/
+.next/
+.data/
+.cache/
+.dist/
+.env*
+!.env.example
+test-results/
+playwright-report/
+.superpowers/
+*.log

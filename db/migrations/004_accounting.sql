@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS pitlane.journals(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES pitlane.tenants,source_key text NOT NULL UNIQUE,origin text NOT NULL CHECK(origin IN('fixture','sandbox','live','internal')),created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS pitlane.journal_lines(journal_id uuid REFERENCES pitlane.journals,account text,asset text CHECK(asset='USD'),scale integer CHECK(scale IN(2,6)),base_units bigint NOT NULL,PRIMARY KEY(journal_id,account,asset,scale));
+CREATE OR REPLACE FUNCTION pitlane.check_journal_balance() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,pitlane AS $$ BEGIN IF EXISTS(SELECT FROM pitlane.journal_lines WHERE journal_id=NEW.journal_id GROUP BY asset,scale HAVING sum(base_units)<>0) THEN RAISE EXCEPTION 'UNBALANCED_JOURNAL';END IF;RETURN NULL; END $$;
+DROP TRIGGER IF EXISTS balanced_journal ON pitlane.journal_lines;
+CREATE CONSTRAINT TRIGGER balanced_journal AFTER INSERT ON pitlane.journal_lines DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION pitlane.check_journal_balance();
+ALTER TABLE pitlane.journals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pitlane.journal_lines ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS billing_read ON pitlane.journals;
+CREATE POLICY billing_read ON pitlane.journals FOR SELECT USING(pitlane.can_billing(tenant_id));
+DROP POLICY IF EXISTS lines_read ON pitlane.journal_lines;
+CREATE POLICY lines_read ON pitlane.journal_lines FOR SELECT USING(EXISTS(SELECT FROM pitlane.journals j WHERE j.id=journal_id AND pitlane.can_billing(j.tenant_id)));
+GRANT SELECT ON pitlane.journals,pitlane.journal_lines TO pitlane_web;

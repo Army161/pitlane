@@ -1,0 +1,3 @@
+import {GENESIS,PROGRAMS,type JobInput,type Observation} from '../../packages/contracts/src';import {SUBJECT} from './mints';
+export const input:JobInput={projectId:'00000000-0000-4000-8000-000000000001',templateId:'solana.mint_configuration',templateVersion:'1',network:'devnet',mint:SUBJECT,expectations:[]};
+export function obs(providerId='a',supply='100'):Observation{return {providerId,upstreamId:providerId,network:'devnet',genesis:GENESIS.devnet,slot:'100',acquiredAt:'2026-10-05T12:00:00.000Z',commitment:'finalized',rawHash:'abc',lamports:'10',mint:{mint:SUBJECT,program:PROGRAMS.original,initialized:true,decimals:9,supply,mintAuthority:null,freezeAuthority:null,extensions:[]}}}

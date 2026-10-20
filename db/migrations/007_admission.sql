@@ -1,0 +1,32 @@
+CREATE OR REPLACE FUNCTION pitlane.create_quote(v jsonb,h text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pitlane AS $$ DECLARE q pitlane.quotes;t uuid=pitlane.actor_tenant();p uuid=(v->>'projectId')::uuid; BEGIN IF NOT pitlane.can_project(t,p,true) THEN RAISE EXCEPTION 'NOT_FOUND';END IF; IF v->>'network' NOT IN('devnet','mainnet-beta') OR v->>'templateId' NOT IN('solana.mint_configuration','solana.integration_expectations') OR v->>'templateVersion'<>'1' THEN RAISE EXCEPTION 'UNSUPPORTED_SCOPE'; END IF; INSERT INTO pitlane.quotes(tenant_id,project_id,actor_id,input,inputs_hash,expires_at) VALUES(t,p,pitlane.actor_id(),v,h,clock_timestamp()+interval '10 minutes') RETURNING * INTO q;RETURN to_jsonb(q);END $$;
+CREATE OR REPLACE FUNCTION pitlane.admit(qid uuid,k text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pitlane AS $$
+DECLARE q pitlane.quotes;j pitlane.jobs;r pitlane.idempotency;lot pitlane.entitlement_lots;work text;cap bigint=1000000;mode text;request_hash text;
+BEGIN
+ SELECT * INTO q FROM pitlane.quotes WHERE id=qid;
+ IF NOT FOUND OR NOT pitlane.can_project(q.tenant_id,q.project_id,true) THEN RAISE EXCEPTION 'NOT_FOUND';END IF;
+ IF k IS NULL OR length(k)<16 OR length(k)>128 THEN RAISE EXCEPTION 'INVALID_IDEMPOTENCY_KEY';END IF;request_hash=q.inputs_hash||coalesce('/compare/'||q.comparison_version_id::text,'');
+ PERFORM pg_advisory_xact_lock(hashtextextended(q.tenant_id::text||q.project_id::text,0));
+ SELECT * INTO r FROM pitlane.idempotency WHERE tenant_id=q.tenant_id AND project_id=q.project_id AND key=k;
+ IF FOUND THEN IF r.request_hash<>request_hash THEN RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT';END IF;SELECT * INTO j FROM pitlane.jobs WHERE id=r.job_id;RETURN to_jsonb(j);END IF;
+ SELECT * INTO q FROM pitlane.quotes WHERE id=qid FOR UPDATE;
+ IF q.consumed_job_id IS NOT NULL THEN SELECT * INTO j FROM pitlane.jobs WHERE id=q.consumed_job_id;INSERT INTO pitlane.idempotency VALUES(q.tenant_id,q.project_id,k,request_hash,j.id,now());RETURN to_jsonb(j);END IF;
+ IF q.expires_at<=clock_timestamp() THEN RAISE EXCEPTION 'QUOTE_EXPIRED';END IF;
+ work=request_hash||':'||floor(extract(epoch FROM q.created_at)/60)::text;
+ SELECT * INTO j FROM pitlane.jobs WHERE tenant_id=q.tenant_id AND project_id=q.project_id AND canonical_key=work;
+ IF FOUND THEN UPDATE pitlane.quotes SET consumed_job_id=j.id WHERE id=qid;INSERT INTO pitlane.idempotency VALUES(q.tenant_id,q.project_id,k,request_hash,j.id,now());RETURN to_jsonb(j);END IF;
+ PERFORM 1 FROM pitlane.budgets WHERE key IN('environment',q.tenant_id::text) ORDER BY key FOR UPDATE;
+ IF (SELECT count(*) FROM pitlane.budgets WHERE key IN('environment',q.tenant_id::text))<>2 OR EXISTS(SELECT FROM pitlane.budgets WHERE key IN('environment',q.tenant_id::text) AND maximum-reserved-spent<cap) THEN RAISE EXCEPTION 'COST_BUDGET_EXHAUSTED';END IF;
+ SELECT * INTO lot FROM pitlane.entitlement_lots WHERE tenant_id=q.tenant_id AND starts_at<=now() AND ends_at>now() AND granted-consumed-reserved>=q.units AND (scope_hashes IS NULL OR q.inputs_hash=ANY(scope_hashes)) ORDER BY ends_at,id FOR UPDATE LIMIT 1;
+ IF NOT FOUND THEN RAISE EXCEPTION 'QUOTA_EXHAUSTED';END IF;
+ IF (SELECT count(*) FROM pitlane.jobs WHERE tenant_id=q.tenant_id AND project_id=q.project_id AND state IN('queued','running','verifying','retry_wait','awaiting_payment'))>=2 THEN RAISE EXCEPTION 'ACTIVE_LIMIT';END IF;
+ SELECT runtime.mode INTO mode FROM pitlane.runtime;
+ IF mode IS NULL THEN RAISE EXCEPTION 'ENVIRONMENT_UNCONFIGURED';END IF;
+ UPDATE pitlane.entitlement_lots SET reserved=reserved+q.units WHERE id=lot.id;
+ UPDATE pitlane.budgets SET reserved=reserved+cap WHERE key IN('environment',q.tenant_id::text);
+ INSERT INTO pitlane.jobs(tenant_id,project_id,quote_id,input,canonical_key,state,origin,lot_id,deadline) VALUES(q.tenant_id,q.project_id,q.id,q.input,work,'queued',CASE WHEN mode='local' THEN 'fixture' ELSE lot.origin END,lot.id,clock_timestamp()+interval '180 seconds') RETURNING * INTO j;
+ INSERT INTO pitlane.idempotency VALUES(q.tenant_id,q.project_id,k,request_hash,j.id,now());
+ UPDATE pitlane.quotes SET consumed_job_id=j.id WHERE id=qid;
+ PERFORM pitlane.emit(j.id,'queued');RETURN to_jsonb(j);
+END $$;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA pitlane FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION pitlane.create_quote(jsonb,text),pitlane.admit(uuid,text) TO pitlane_web;

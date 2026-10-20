@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  '@embedded-postgres/windows-x64': true
+  embedded-postgres: true
+  bigint-buffer: false
+  bufferutil: false
+  esbuild: true
+  utf-8-validate: false
+onlyBuiltDependencies:
+  - esbuild
+  - embedded-postgres
+ignoredBuiltDependencies:
+  - bigint-buffer
+  - bufferutil
+  - utf-8-validate

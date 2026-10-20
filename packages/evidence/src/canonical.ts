@@ -1,0 +1,4 @@
+import {createHash} from 'node:crypto';
+export function canonical(value:unknown):string {if(value===null)return 'null';if(typeof value==='string'||typeof value==='boolean')return JSON.stringify(value);if(typeof value==='number'){if(!Number.isSafeInteger(value))throw new Error('Unsafe JSON number');return JSON.stringify(value)}if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';if(typeof value==='object'){return '{'+Object.entries(value as Record<string,unknown>).filter(([,v])=>v!==undefined).sort(([a],[b])=>Buffer.compare(Buffer.from(a),Buffer.from(b))).map(([k,v])=>JSON.stringify(k)+':'+canonical(v)).join(',')+'}'}throw new Error('Non-JSON value')}
+export const digest=(value:unknown)=>createHash('sha256').update(canonical(value)).digest('hex');
+export const rawDigest=(bytes:Uint8Array|string)=>createHash('sha256').update(bytes).digest('hex');
