@@ -1,4 +1,5 @@
 import {featureRoute} from './features';
+import {careerRoute} from './career-api';
 import {lifecycleRoute} from './lifecycle-api';
 import {collaborationRoute} from './collaboration-api';
 import type {Collaboration} from '../../../../packages/core/src/collaboration';
@@ -27,6 +28,7 @@ export class Api {
  async handle(request:Request):Promise<Response>{const requestId=randomUUID();try{const identity=await this.deps.identity(request);if(!['GET','HEAD'].includes(request.method)&&identity.cookie&&(request.headers.get('origin')!==this.deps.origin||request.headers.get('x-csrf-token')!==identity.csrf))return json({code:'CSRF_REQUIRED',request_id:requestId},403);const actor:Actor={userId:identity.userId,tenantId:identity.tenantId};const u=new URL(request.url),path=u.pathname;const db=this.deps.db;
  const body=async()=>JSON.parse(await boundedBody(new Response(request.body),65536));
  const read=async<T=Record<string,any>>(sql:string,values?:unknown[])=>db.transaction(tx=>tx.query<T>(sql,values),actor);
+ const career=await careerRoute(request,actor,db,body);if(career)return career;
  const lifecycle=await lifecycleRoute(request,actor,{db,body,billingEnabled:!!this.deps.orders});if(lifecycle)return lifecycle;
  if(path==='/v1/templates'&&request.method==='GET')return json(['solana.mint_configuration','solana.integration_expectations'].map(id=>({template_id:id,template_version:'1',extensions:EXTENSIONS,limits:{deadline_seconds:180,maximum_predicates:32},evidence_policy:'two_finalized_independent_upstreams',description:id.endsWith('mint_configuration')?'Reproducible mint configuration':'Declared configuration predicates'})));
  if(path==='/v1/projects'&&request.method==='GET')return json((await read('select id,name,tenant_id,pitlane.can_project(tenant_id,id,true) as can_write,pitlane.can_project_admin(tenant_id,id) as can_admin from pitlane.projects order by name')).rows);

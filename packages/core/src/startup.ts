@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {GENESIS,type Db,type Network,type RuntimeConfig} from '../../contracts/src';
 import type {ProviderIdentity} from '../../adapters/src/solana-rpc';
-export const SERVICE_SCHEMA_VERSION='036';
+export const SERVICE_SCHEMA_VERSION='037';
 declare const __PITLANE_COMPILED_BUILD__:string;
 const compiledBuild=typeof __PITLANE_COMPILED_BUILD__==='string'?__PITLANE_COMPILED_BUILD__:undefined;
 export type ServiceRole='pitlane_web'|'pitlane_worker'|'pitlane_billing'|'pitlane_auth'|'pitlane_gateway'|'pitlane_artifact'|'pitlane_maintenance';

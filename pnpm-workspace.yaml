@@ -8,6 +8,7 @@ allowBuilds:
   bufferutil: false
   esbuild: true
   utf-8-validate: false
+  '@embedded-postgres/linux-x64': true
 onlyBuiltDependencies:
   - esbuild
   - embedded-postgres

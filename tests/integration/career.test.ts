@@ -1,0 +1,66 @@
+import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
+import type pg from 'pg';
+import {database,seed,scoped,T,U,T2,U2} from './support';
+import {PostgresDb} from '../../packages/adapters/src/postgres';
+import {Career} from '../../packages/core/src/career';
+import {Api} from '../../apps/web/src/lib/api';
+let pool:pg.Pool,web:PostgresDb,career:Career;const actor={tenantId:T,userId:U};
+beforeAll(async()=>{pool=await database();web=new PostgresDb(process.env.PITLANE_TEST_DATABASE_URL!);career=new Career(web);});
+beforeEach(async()=>seed(pool));afterAll(async()=>{await Promise.all([pool?.end(),web?.close()]);});
+it('records server-validated free learning once under concurrent replay without changing economic state',async()=>{
+ const before=(await pool.query('select granted,reserved,consumed from pitlane.entitlement_lots')).rows;
+ expect(await career.state(actor)).toMatchObject({optIn:false,livery:'factory',numberStyle:'classic',lighting:'workshop',milestones:[],leaderboard:[]});
+ await expect(career.complete(actor,{milestone:'purpose',answer:'safe'})).rejects.toThrow('INVALID_INPUT');
+ await expect(career.complete(actor,{milestone:'purpose',answer:'technical-fit',points:999})).rejects.toThrow();
+ await Promise.all(Array.from({length:8},()=>career.complete(actor,{milestone:'purpose',answer:'technical-fit'})));
+ const state=await career.state(actor);expect(state.milestones).toHaveLength(1);expect(state.milestones[0].id).toBe('purpose');
+ expect((await pool.query('select granted,reserved,consumed from pitlane.entitlement_lots')).rows).toEqual(before);
+ expect((await pool.query('select count(*) as n from pitlane.jobs')).rows[0].n).toBe('0');
+ await expect(scoped(pool,tx=>tx.query("insert into pitlane.career_milestones values($1,$2,'privacy',now())",[T,U]))).rejects.toThrow('permission denied');
+});
+it('keeps learning personal and boards tenant-private, requires opt-in and hides withdrawal immediately',async()=>{
+ await career.complete(actor,{milestone:'purpose',answer:'technical-fit'});
+ await career.profile(actor,{alias:'OrangeCrew',optIn:true,livery:'factory'});
+ expect((await career.state({tenantId:T2,userId:U2})).leaderboard).toEqual([]);
+ await pool.query("insert into pitlane.tenant_memberships values($1,$2,'member',true)",[T,U2]);
+ const member={tenantId:T,userId:U2};
+ expect(await career.state(member)).toMatchObject({milestones:[],optIn:false,leaderboard:[{alias:'OrangeCrew',completed:1,self:false}]});
+ await career.profile(actor,{alias:'OrangeCrew',optIn:false,livery:'factory'});
+ expect((await career.state(member)).leaderboard).toEqual([]);
+ await expect(career.state({tenantId:T,userId:'30000000-0000-4000-8000-000000000099'})).rejects.toThrow('NOT_FOUND');
+});
+it('locks cosmetic upgrades behind deduplicated lessons and erases revoked members and deleted tenants',async()=>{
+ await expect(career.profile(actor,{alias:'Crew27',optIn:true,livery:'night'})).rejects.toThrow('INVALID_INPUT');
+ const answers={purpose:'technical-fit',outcomes:'not-enough-evidence',coverage:'four-listed-extensions',evidence:'point-in-time',privacy:'private-workspace',cosmetics:'appearance-only'};
+ for(const [milestone,answer] of Object.entries(answers))await career.complete(actor,{milestone,answer});
+ expect(await career.profile(actor,{alias:'Crew27',optIn:true,livery:'night'})).toMatchObject({livery:'night',optIn:true});
+ await pool.query('update pitlane.tenant_memberships set active=false where tenant_id=$1 and user_id=$2',[T,U]);
+ await expect(career.state(actor)).rejects.toThrow('NOT_FOUND');
+ expect((await pool.query('select count(*) as n from pitlane.career_milestones')).rows[0].n).toBe('0');
+ expect((await pool.query('select count(*) as n from pitlane.career_profiles')).rows[0].n).toBe('0');
+ await pool.query('update pitlane.tenant_memberships set active=true where tenant_id=$1 and user_id=$2',[T,U]);
+ await career.complete(actor,{milestone:'purpose',answer:'technical-fit'});
+ await pool.query('update pitlane.tenants set deleted_at=now() where id=$1',[T]);
+ expect((await pool.query('select count(*) as n from pitlane.career_milestones')).rows[0].n).toBe('0');
+ await expect(career.state(actor)).rejects.toThrow('NOT_FOUND');
+});
+it('uses existing CSRF protection, rejects invalid answers and never caches private API state',async()=>{
+ const api=new Api({db:web,origin:'http://localhost',identity:async()=>({...actor,cookie:true,csrf:'csrf-test'})});
+ const denied=await api.handle(new Request('http://localhost/v1/career/profile',{method:'POST',body:JSON.stringify({alias:'Crew27',optIn:true,livery:'factory'})}));expect(denied.status).toBe(403);
+ const invalid=await api.handle(new Request('http://localhost/v1/career/milestones',{method:'POST',headers:{origin:'http://localhost','x-csrf-token':'csrf-test'},body:JSON.stringify({milestone:'purpose',answer:'wrong'})}));expect(invalid.status).toBe(422);
+ const state=await api.handle(new Request('http://localhost/v1/career'));expect(state.status).toBe(200);expect(state.headers.get('cache-control')).toBe('no-store');
+});
+it('gates every cosmetic option by free lessons only and never touches quotas, jobs or receipts',async()=>{
+ const before=(await pool.query('select granted,reserved,consumed from pitlane.entitlement_lots')).rows;
+ await expect(career.profile(actor,{alias:'Crew27',optIn:false,livery:'factory',numberStyle:'block',lighting:'workshop'})).rejects.toThrow('INVALID_INPUT');
+ await expect(career.profile(actor,{alias:'Crew27',optIn:false,livery:'factory',numberStyle:'classic',lighting:'dusk'})).rejects.toThrow('INVALID_INPUT');
+ await expect(career.profile(actor,{alias:'Crew27',optIn:false,livery:'factory',numberStyle:'neon',lighting:'workshop'})).rejects.toThrow();
+ await career.complete(actor,{milestone:'purpose',answer:'technical-fit'});
+ expect(await career.profile(actor,{alias:'Crew27',optIn:false,livery:'factory',numberStyle:'classic',lighting:'dusk'})).toMatchObject({lighting:'dusk',numberStyle:'classic'});
+ await expect(career.profile(actor,{alias:'Crew27',optIn:false,livery:'factory',numberStyle:'block',lighting:'dusk'})).rejects.toThrow('INVALID_INPUT');
+ await career.complete(actor,{milestone:'outcomes',answer:'not-enough-evidence'});
+ expect(await career.profile(actor,{alias:'Crew27',optIn:false,livery:'factory',numberStyle:'block',lighting:'dusk'})).toMatchObject({numberStyle:'block',optIn:false,leaderboard:[]});
+ expect((await pool.query('select granted,reserved,consumed from pitlane.entitlement_lots')).rows).toEqual(before);
+ expect((await pool.query('select count(*) as n from pitlane.jobs')).rows[0].n).toBe('0');
+ expect((await pool.query('select count(*) as n from pitlane.receipt_versions')).rows[0].n).toBe('0');
+});
